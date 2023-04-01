@@ -33,113 +33,106 @@ class MyApp extends StatelessWidget {
         // is not restarted.
         primarySwatch: Colors.blue,
       ),
-      home: const SearchPlacesScreen(),
+      home: Home(),
     );
   }
 }
 
-class SearchPlacesScreen extends StatefulWidget {
-  const SearchPlacesScreen({Key? key}) : super(key: key);
-
+class Home extends StatefulWidget {
   @override
-  State<SearchPlacesScreen> createState() => _SearchPlacesScreenState();
+  _HomeState createState() => _HomeState();
 }
 
-const kGoogleApiKey = 'AIzaSyB8xeMsghyVFv1US6Aqkt4bFAczDfmgjMs';
-final homeScaffoldKey = GlobalKey<ScaffoldState>();
-
-class _SearchPlacesScreenState extends State<SearchPlacesScreen> {
-  static const CameraPosition initialCameraPosition =
-      CameraPosition(target: LatLng(37.42796, -122.08574), zoom: 14.0);
-
-  Set<Marker> markersList = {};
-
-  late GoogleMapController googleMapController;
-
-  final Mode _mode = Mode.overlay;
+class _HomeState extends State<Home> {
+  String googleApikey = "AIzaSyB8xeMsghyVFv1US6Aqkt4bFAczDfmgjMs";
+  GoogleMapController? mapController; //contrller for Google map
+  CameraPosition? cameraPosition;
+  LatLng startLocation = LatLng(27.6602292, 85.308027);
+  String location = "Search Location";
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      key: homeScaffoldKey,
-      appBar: AppBar(
-        title: const Text("Google Search Places"),
-      ),
-      body: Stack(
-        children: [
+        appBar: AppBar(
+          title: Text("Flutter Google Map"),
+          backgroundColor: Colors.blue,
+        ),
+        body: Stack(children: [
           GoogleMap(
-            initialCameraPosition: initialCameraPosition,
-            markers: markersList,
-            mapType: MapType.normal,
-            onMapCreated: (GoogleMapController controller) {
-              googleMapController = controller;
+            //Map widget from google_maps_flutter package
+            zoomGesturesEnabled: true, //enable Zoom in, out on map
+            initialCameraPosition: CameraPosition(
+              //innital position in map
+              target: startLocation, //initial position
+              zoom: 14.0, //initial zoom level
+            ),
+            mapType: MapType.normal, //map type
+            onMapCreated: (controller) {
+              //method called when map is created
+              setState(() {
+                mapController = controller;
+              });
             },
           ),
-          ElevatedButton(
-              onPressed: _handlePressButton,
-              child: const Text("Search Places")),
-        ],
-      ),
-    );
-  }
 
-  Future<void> _handlePressButton() async {
-    Prediction? p = await PlacesAutocomplete.show(
-        context: context,
-        apiKey: kGoogleApiKey,
-        onError: onError,
-        mode: _mode,
-        language: 'en',
-        strictbounds: false,
-        types: [""],
-        decoration: InputDecoration(
-            hintText: 'Search',
-            focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(20),
-                borderSide: BorderSide(color: Colors.white))),
-        components: [
-          Component(Component.country, "pk"),
-          Component(Component.country, "usa")
-        ]);
+          //search autoconplete input
+          Positioned(
+              //search input bar
+              top: 10,
+              child: InkWell(
+                  onTap: () async {
+                    var place = await PlacesAutocomplete.show(
+                        context: context,
+                        apiKey: googleApikey,
+                        mode: Mode.overlay,
+                        types: [],
+                        strictbounds: false,
+                        components: [Component(Component.country, 'np')],
+                        //google_map_webservice package
+                        onError: (err) {
+                          print(err);
+                        });
 
-    displayPrediction(p!, homeScaffoldKey.currentState);
-  }
+                    if (place != null) {
+                      setState(() {
+                        location = place.description.toString();
+                      });
 
-  void onError(PlacesAutocompleteResponse response) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      elevation: 0,
-      behavior: SnackBarBehavior.floating,
-      backgroundColor: Colors.transparent,
-      content: AwesomeSnackbarContent(
-        title: 'Message',
-        message: response.errorMessage!,
-        contentType: ContentType.failure,
-      ),
-    ));
+                      //form google_maps_webservice package
+                      final plist = GoogleMapsPlaces(
+                        apiKey: googleApikey,
+                        apiHeaders: await GoogleApiHeaders().getHeaders(),
+                        //from google_api_headers package
+                      );
+                      String placeid = place.placeId ?? "0";
+                      final detail = await plist.getDetailsByPlaceId(placeid);
+                      final geometry = detail.result.geometry!;
+                      final lat = geometry.location.lat;
+                      final lang = geometry.location.lng;
+                      var newlatlang = LatLng(lat, lang);
 
-    // homeScaffoldKey.currentState!.showSnackBar(SnackBar(content: Text(response.errorMessage!)));
-  }
-
-  Future<void> displayPrediction(
-      Prediction p, ScaffoldState? currentState) async {
-    GoogleMapsPlaces places = GoogleMapsPlaces(
-        apiKey: kGoogleApiKey,
-        apiHeaders: await const GoogleApiHeaders().getHeaders());
-
-    PlacesDetailsResponse detail = await places.getDetailsByPlaceId(p.placeId!);
-
-    final lat = detail.result.geometry!.location.lat;
-    final lng = detail.result.geometry!.location.lng;
-
-    markersList.clear();
-    markersList.add(Marker(
-        markerId: const MarkerId("0"),
-        position: LatLng(lat, lng),
-        infoWindow: InfoWindow(title: detail.result.name)));
-
-    setState(() {});
-
-    googleMapController
-        .animateCamera(CameraUpdate.newLatLngZoom(LatLng(lat, lng), 14.0));
+                      //move map camera to selected place with animation
+                      mapController?.animateCamera(
+                          CameraUpdate.newCameraPosition(
+                              CameraPosition(target: newlatlang, zoom: 17)));
+                    }
+                  },
+                  child: Padding(
+                    padding: EdgeInsets.all(15),
+                    child: Card(
+                      child: Container(
+                          padding: EdgeInsets.all(0),
+                          width: MediaQuery.of(context).size.width - 40,
+                          child: ListTile(
+                            title: Text(
+                              location,
+                              style: TextStyle(fontSize: 18),
+                            ),
+                            trailing: Icon(Icons.search),
+                            dense: true,
+                          )),
+                    ),
+                  )))
+        ]));
   }
 }
